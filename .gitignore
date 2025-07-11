@@ -1,2 +1,3 @@
-drone-controll/
+__pycache__/
 venv/
+*.pyc
