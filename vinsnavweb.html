@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VINS-Mono Advanced Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        .status {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .connected { background: rgba(76, 175, 80, 0.3); }
+        .disconnected { background: rgba(244, 67, 54, 0.3); }
+        .waiting { background: rgba(255, 193, 7, 0.3); }
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .data-item {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        .data-value {
+            font-size: 1.6em;
+            font-weight: bold;
+            color: #4ade80;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        .trajectory-container {
+            position: relative;
+            height: 400px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .trajectory-canvas {
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.6);
+            color: #0f0;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            border-radius: 8px;
+            font-size: 0.8em;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 1em;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        .compass {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+            position: relative;
+            background: radial-gradient(circle, #333 30%, #666 100%);
+            border-radius: 50%;
+            border: 3px solid #fff;
+        }
+        .compass-needle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 50px;
+            background: linear-gradient(to top, #ff0000 0%, #ff6b6b 50%, #ffffff 100%);
+            transform-origin: bottom center;
+            transform: translate(-50%, -100%);
+            border-radius: 2px;
+            transition: transform 0.3s ease;
+        }
+        .compass-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 12px;
+            background: #333;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        h2 { border-bottom: 2px solid rgba(255, 255, 255, 0.3); padding-bottom: 10px; margin-top: 0; }
+        .video-stream {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .control-panel {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .stats-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚁 VINS-Mono Advanced Interface</h1>
+        
+        <!-- Connection Status -->
+        <div class="card">
+            <h2>📡 Connection Status</h2>
+            <div class="status disconnected" id="ros-status">
+                <span>WebSocket (ROS Bridge):</span>
+                <span>Disconnected</span>
+            </div>
+            <div class="status waiting" id="vins-status">
+                <span>VINS-Mono Data:</span>
+                <span>Waiting...</span>
+            </div>
+            <div class="status waiting" id="imu-status">
+                <span>IMU Data:</span>
+                <span>Waiting...</span>
+            </div>
+            
+            <div class="control-panel">
+                <button onclick="connectWebSocket()" id="connect-btn">Connect to ROS Bridge</button>
+                <button onclick="clearTrajectory()">Clear Trajectory</button>
+                <button onclick="clearLogs()">Clear Logs</button>
+                <button onclick="toggleRecording()" id="record-btn">Start Recording</button>
+            </div>
+        </div>
+        
+        <div class="grid-layout">
+            <!-- Position Data & Compass -->
+            <div class="card">
+                <h2>📍 Drone Position & Orientation</h2>
+                <div class="data-grid">
+                    <div class="data-item">
+                        <div class="data-value" id="pos-x">0.000</div>
+                        <div>X Position (m)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="pos-y">0.000</div>
+                        <div>Y Position (m)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="pos-z">0.000</div>
+                        <div>Z Position (m)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="pos-yaw">0.0</div>
+                        <div>Yaw Angle (°)</div>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <h3>🧭 Compass</h3>
+                    <div class="compass">
+                        <div class="compass-needle" id="compass-needle"></div>
+                        <div class="compass-center"></div>
+                    </div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 10px;">
+                    <small>VINS Messages: <span id="odom-count">0</span></small>
+                </div>
+            </div>
+            
+            <!-- IMU Data -->
+            <div class="card">
+                <h2>📊 IMU Sensor Data</h2>
+                <div class="data-grid">
+                    <div class="data-item">
+                        <div class="data-value" id="imu-ax">0.000</div>
+                        <div>Accel X (m/s²)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="imu-ay">0.000</div>
+                        <div>Accel Y (m/s²)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="imu-az">0.000</div>
+                        <div>Accel Z (m/s²)</div>
+                    </div>
+                    <div class="data-item">
+                        <div class="data-value" id="imu-gz">0.000</div>
+                        <div>Gyro Z (rad/s)</div>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 10px;">
+                    <small>IMU Messages: <span id="imu-count">0</span></small>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Trajectory Map -->
+        <div class="card full-width">
+            <h2>🗺️ Flight Trajectory</h2>
+            <div class="trajectory-container">
+                <canvas id="trajectory-canvas" class="trajectory-canvas"></canvas>
+                <div class="stats-overlay">
+                    <div>Points: <span id="trajectory-points">0</span></div>
+                    <div>Distance: <span id="total-distance">0.0</span>m</div>
+                    <div>Time: <span id="flight-time">00:00</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid-layout">
+            <!-- IMU Charts -->
+            <div class="card">
+                <h2>📈 IMU Acceleration</h2>
+                <div class="chart-container">
+                    <canvas id="imu-chart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Position Charts -->
+            <div class="card">
+                <h2>📊 Position History</h2>
+                <div class="chart-container">
+                    <canvas id="position-chart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid-layout">
+            <!-- Video Feed -->
+            <div class="card">
+                <h2>📹 Camera Feed</h2>
+                <div style="text-align: center;">
+                    <img id="video-feed" class="video-stream"
+                         src="http://localhost:8080/stream?topic=/cam0/image_raw" 
+                         alt="Camera feed loading..."
+                         onerror="handleVideoError(this)"
+                         onload="handleVideoLoad()">
+                    <div style="margin-top: 10px;">
+                        <small>Video status: <span id="video-state">Loading...</span></small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Debug Logs -->
+            <div class="card">
+                <h2>📝 Debug Console</h2>
+                <div class="log" id="log-output"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let ws = null;
+        let isConnected = false;
+        let odomCount = 0;
+        let imuCount = 0;
+        let isRecording = false;
+        let startTime = null;
+        
+        // Charts
+        let imuChart = null;
+        let positionChart = null;
+        
+        // Trajectory data
+        let trajectoryPoints = [];
+        let trajectoryCanvas = null;
+        let trajectoryCtx = null;
+        let totalDistance = 0;
+        
+        // Data storage for charts
+        let imuData = {
+            labels: [],
+            ax: [], ay: [], az: []
+        };
+        let positionData = {
+            labels: [],
+            x: [], y: [], z: []
+        };
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🚀 VINS-Mono Advanced Interface initialized');
+            initializeCharts();
+            initializeTrajectory();
+            
+            // Auto-connect
+            setTimeout(() => {
+                log('🔄 Auto-connecting in 2 seconds...');
+                setTimeout(connectWebSocket, 2000);
+            }, 1000);
+        });
+        
+        function initializeCharts() {
+            // IMU Chart
+            const imuCtx = document.getElementById('imu-chart').getContext('2d');
+            imuChart = new Chart(imuCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Accel X',
+                        data: [],
+                        borderColor: '#ff6b6b',
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        tension: 0.1
+                    }, {
+                        label: 'Accel Y',
+                        data: [],
+                        borderColor: '#4ecdc4',
+                        backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                        tension: 0.1
+                    }, {
+                        label: 'Accel Z',
+                        data: [],
+                        borderColor: '#45b7d1',
+                        backgroundColor: 'rgba(69, 183, 209, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            title: { display: true, text: 'm/s²', color: 'white' },
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.2)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'white' } }
+                    }
+                }
+            });
+            
+            // Position Chart
+            const posCtx = document.getElementById('position-chart').getContext('2d');
+            positionChart = new Chart(posCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'X Position',
+                        data: [],
+                        borderColor: '#ff9f43',
+                        backgroundColor: 'rgba(255, 159, 67, 0.1)',
+                        tension: 0.1
+                    }, {
+                        label: 'Y Position',
+                        data: [],
+                        borderColor: '#10ac84',
+                        backgroundColor: 'rgba(16, 172, 132, 0.1)',
+                        tension: 0.1
+                    }, {
+                        label: 'Z Position',
+                        data: [],
+                        borderColor: '#ee5a52',
+                        backgroundColor: 'rgba(238, 90, 82, 0.1)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            title: { display: true, text: 'meters', color: 'white' },
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.2)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'white' } }
+                    }
+                }
+            });
+        }
+        
+        function initializeTrajectory() {
+            trajectoryCanvas = document.getElementById('trajectory-canvas');
+            trajectoryCtx = trajectoryCanvas.getContext('2d');
+            
+            // Set canvas size
+            function resizeCanvas() {
+                const rect = trajectoryCanvas.getBoundingClientRect();
+                trajectoryCanvas.width = rect.width;
+                trajectoryCanvas.height = rect.height;
+                drawTrajectory();
+            }
+            
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+        }
+        
+        function drawTrajectory() {
+            if (!trajectoryCtx || trajectoryPoints.length === 0) return;
+            
+            const canvas = trajectoryCanvas;
+            const ctx = trajectoryCtx;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Find bounds
+            let minX = Math.min(...trajectoryPoints.map(p => p.x));
+            let maxX = Math.max(...trajectoryPoints.map(p => p.x));
+            let minY = Math.min(...trajectoryPoints.map(p => p.y));
+            let maxY = Math.max(...trajectoryPoints.map(p => p.y));
+            
+            // Add padding
+            const padding = 50;
+            const rangeX = maxX - minX || 1;
+            const rangeY = maxY - minY || 1;
+            
+            // Scale factors
+            const scaleX = (canvas.width - 2 * padding) / rangeX;
+            const scaleY = (canvas.height - 2 * padding) / rangeY;
+            const scale = Math.min(scaleX, scaleY);
+            
+            // Center the trajectory
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const trajCenterX = (minX + maxX) / 2;
+            const trajCenterY = (minY + maxY) / 2;
+            
+            // Draw grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Draw trajectory
+            if (trajectoryPoints.length > 1) {
+                ctx.strokeStyle = '#4ade80';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                
+                for (let i = 0; i < trajectoryPoints.length; i++) {
+                    const point = trajectoryPoints[i];
+                    const x = centerX + (point.x - trajCenterX) * scale;
+                    const y = centerY - (point.y - trajCenterY) * scale; // Flip Y
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                
+                // Draw start point (green)
+                const startPoint = trajectoryPoints[0];
+                const startX = centerX + (startPoint.x - trajCenterX) * scale;
+                const startY = centerY - (startPoint.y - trajCenterY) * scale;
+                
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.arc(startX, startY, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw current point (red)
+                const currentPoint = trajectoryPoints[trajectoryPoints.length - 1];
+                const currentX = centerX + (currentPoint.x - trajCenterX) * scale;
+                const currentY = centerY - (currentPoint.y - trajCenterY) * scale;
+                
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(currentX, currentY, 8, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // Draw direction arrow
+                if (trajectoryPoints.length > 2) {
+                    const prevPoint = trajectoryPoints[trajectoryPoints.length - 2];
+                    const prevX = centerX + (prevPoint.x - trajCenterX) * scale;
+                    const prevY = centerY - (prevPoint.y - trajCenterY) * scale;
+                    
+                    const angle = Math.atan2(currentY - prevY, currentX - prevX);
+                    const arrowLength = 15;
+                    
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(currentX, currentY);
+                    ctx.lineTo(
+                        currentX + Math.cos(angle + 2.8) * arrowLength,
+                        currentY + Math.sin(angle + 2.8) * arrowLength
+                    );
+                    ctx.moveTo(currentX, currentY);
+                    ctx.lineTo(
+                        currentX + Math.cos(angle - 2.8) * arrowLength,
+                        currentY + Math.sin(angle - 2.8) * arrowLength
+                    );
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw origin
+            const originX = centerX - trajCenterX * scale;
+            const originY = centerY + trajCenterY * scale;
+            
+            if (originX >= 0 && originX <= canvas.width && originY >= 0 && originY <= canvas.height) {
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(originX - 10, originY);
+                ctx.lineTo(originX + 10, originY);
+                ctx.moveTo(originX, originY - 10);
+                ctx.lineTo(originX, originY + 10);
+                ctx.stroke();
+            }
+        }
+        
+        function clearTrajectory() {
+            trajectoryPoints = [];
+            totalDistance = 0;
+            document.getElementById('trajectory-points').textContent = '0';
+            document.getElementById('total-distance').textContent = '0.0';
+            drawTrajectory();
+            log('🧹 Trajectory cleared');
+        }
+        
+        function toggleRecording() {
+            const btn = document.getElementById('record-btn');
+            isRecording = !isRecording;
+            
+            if (isRecording) {
+                startTime = Date.now();
+                btn.textContent = 'Stop Recording';
+                btn.style.background = '#dc3545';
+                log('🔴 Recording started');
+            } else {
+                btn.textContent = 'Start Recording';
+                btn.style.background = '#007bff';
+                log('⏹️ Recording stopped');
+            }
+        }
+        
+        function updateFlightTime() {
+            if (startTime && isRecording) {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('flight-time').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+        
+        // Update flight time every second
+        setInterval(updateFlightTime, 1000);
+        
+        function log(message, type = 'info') {
+            const logOutput = document.getElementById('log-output');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const colors = {
+                info: '#0f0',
+                warn: '#ff0',
+                error: '#f00',
+                success: '#0f0'
+            };
+            
+            const logEntry = document.createElement('div');
+            logEntry.style.color = colors[type] || '#0f0';
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            
+            logOutput.appendChild(logEntry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+            
+            console.log(`[VINS] ${message}`);
+            
+            while (logOutput.children.length > 50) {
+                logOutput.removeChild(logOutput.firstChild);
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('log-output').innerHTML = '';
+            log('🧹 Logs cleared');
+        }
+        
+        function updateStatus(elementId, text, statusClass) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.className = `status ${statusClass}`;
+                const spans = element.getElementsByTagName('span');
+                if (spans.length > 1) {
+                    spans[1].textContent = text;
+                }
+            }
+        }
+        
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('⚠️ Already connected to WebSocket', 'warn');
+                return;
+            }
+            
+            log('🔌 Attempting to connect to WebSocket...');
+            
+            try {
+                ws = new WebSocket('ws://localhost:9090');
+                
+                ws.onopen = function(event) {
+                    log('✅ Connected to ROS Bridge WebSocket successfully!', 'success');
+                    updateStatus('ros-status', 'Connected', 'connected');
+                    isConnected = true;
+                    
+                    document.getElementById('connect-btn').textContent = 'Disconnect';
+                    subscribeToTopics();
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleROSMessage(data);
+                    } catch (error) {
+                        log(`❌ Error parsing WebSocket message: ${error}`, 'error');
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error}`, 'error');
+                    updateStatus('ros-status', 'Error', 'disconnected');
+                };
+                
+                ws.onclose = function(event) {
+                    log(`🔌 WebSocket connection closed (Code: ${event.code})`, 'warn');
+                    updateStatus('ros-status', 'Disconnected', 'disconnected');
+                    isConnected = false;
+                    document.getElementById('connect-btn').textContent = 'Connect to ROS Bridge';
+                };
+                
+            } catch (error) {
+                log(`❌ Failed to create WebSocket: ${error}`, 'error');
+            }
+        }
+        
+        function subscribeToTopics() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            
+            log('📡 Subscribing to ROS topics...');
+            
+            const odomSubscribe = {
+                op: 'subscribe',
+                topic: '/vins_estimator/odometry',
+                type: 'nav_msgs/Odometry'
+            };
+            ws.send(JSON.stringify(odomSubscribe));
+            log('📍 Subscribed to VINS odometry topic');
+            
+            const imuSubscribe = {
+                op: 'subscribe',
+                topic: '/imu0',
+                type: 'sensor_msgs/Imu'
+            };
+            ws.send(JSON.stringify(imuSubscribe));
+            log('📊 Subscribed to IMU topic');
+        }
+        
+        function handleROSMessage(data) {
+            if (data.topic === '/vins_estimator/odometry') {
+                odomCount++;
+                document.getElementById('odom-count').textContent = odomCount;
+                updateStatus('vins-status', 'Active', 'connected');
+                updatePositionData(data.msg);
+                
+                if (odomCount % 10 === 1) {
+                    log(`📍 Received VINS odometry data (${odomCount} total)`);
+                }
+                
+            } else if (data.topic === '/imu0') {
+                imuCount++;
+                document.getElementById('imu-count').textContent = imuCount;
+                updateStatus('imu-status', 'Active', 'connected');
+                updateIMUData(data.msg);
+                
+                if (imuCount % 100 === 1) {
+                    log(`📊 Received IMU data (${imuCount} total)`);
+                }
+            }
+        }
+        
+        function updatePositionData(odom) {
+            try {
+                const pos = odom.pose.pose.position;
+                const orient = odom.pose.pose.orientation;
+                
+                // Update position display
+                document.getElementById('pos-x').textContent = pos.x.toFixed(3);
+                document.getElementById('pos-y').textContent = pos.y.toFixed(3);
+                document.getElementById('pos-z').textContent = pos.z.toFixed(3);
+                
+                // Calculate yaw
+                const yaw = Math.atan2(
+                    2 * (orient.w * orient.z + orient.x * orient.y),
+                    1 - 2 * (orient.y * orient.y + orient.z * orient.z)
+                ) * 180 / Math.PI;
+                
+                document.getElementById('pos-yaw').textContent = yaw.toFixed(1);
+                
+                // Update compass
+                const needle = document.getElementById('compass-needle');
+                if (needle) {
+                    needle.style.transform = `translate(-50%, -100%) rotate(${yaw}deg)`;
+                }
+                
+                // Add to trajectory
+                if (isRecording) {
+                    const newPoint = { x: pos.x, y: pos.y, z: pos.z };
+                    
+                    if (trajectoryPoints.length > 0) {
+                        const lastPoint = trajectoryPoints[trajectoryPoints.length - 1];
+                        const distance = Math.sqrt(
+                            Math.pow(newPoint.x - lastPoint.x, 2) +
+                            Math.pow(newPoint.y - lastPoint.y, 2) +
+                            Math.pow(newPoint.z - lastPoint.z, 2)
+                        );
+                        totalDistance += distance;
+                    }
+                    
+                    trajectoryPoints.push(newPoint);
+                    
+                    // Limit trajectory points to prevent memory issues
+                    if (trajectoryPoints.length > 1000) {
+                        trajectoryPoints.shift();
+                    }
+                    
+                    // Update trajectory display
+                    document.getElementById('trajectory-points').textContent = trajectoryPoints.length;
+                    document.getElementById('total-distance').textContent = totalDistance.toFixed(1);
+                    
+                    drawTrajectory();
+                }
+                
+                // Update position chart
+                const now = new Date().toLocaleTimeString();
+                positionData.labels.push(now);
+                positionData.x.push(pos.x);
+                positionData.y.push(pos.y);
+                positionData.z.push(pos.z);
+                
+                // Keep only last 50 points
+                if (positionData.labels.length > 50) {
+                    positionData.labels.shift();
+                    positionData.x.shift();
+                    positionData.y.shift();
+                    positionData.z.shift();
+                }
+                
+                // Update chart every 5th message to improve performance
+                if (odomCount % 5 === 0) {
+                    positionChart.data.labels = positionData.labels;
+                    positionChart.data.datasets[0].data = positionData.x;
+                    positionChart.data.datasets[1].data = positionData.y;
+                    positionChart.data.datasets[2].data = positionData.z;
+                    positionChart.update('none');
+                }
+                
+            } catch (error) {
+                log(`❌ Error updating position: ${error}`, 'error');
+            }
+        }
+        
+        function updateIMUData(imu) {
+            try {
+                const accel = imu.linear_acceleration;
+                const gyro = imu.angular_velocity;
+                
+                // Update IMU display
+                document.getElementById('imu-ax').textContent = accel.x.toFixed(3);
+                document.getElementById('imu-ay').textContent = accel.y.toFixed(3);
+                document.getElementById('imu-az').textContent = accel.z.toFixed(3);
+                document.getElementById('imu-gz').textContent = gyro.z.toFixed(3);
+                
+                // Update IMU chart
+                const now = new Date().toLocaleTimeString();
+                imuData.labels.push(now);
+                imuData.ax.push(accel.x);
+                imuData.ay.push(accel.y);
+                imuData.az.push(accel.z);
+                
+                // Keep only last 100 points
+                if (imuData.labels.length > 100) {
+                    imuData.labels.shift();
+                    imuData.ax.shift();
+                    imuData.ay.shift();
+                    imuData.az.shift();
+                }
+                
+                // Update chart every 10th message to improve performance
+                if (imuCount % 10 === 0) {
+                    imuChart.data.labels = imuData.labels;
+                    imuChart.data.datasets[0].data = imuData.ax;
+                    imuChart.data.datasets[1].data = imuData.ay;
+                    imuChart.data.datasets[2].data = imuData.az;
+                    imuChart.update('none');
+                }
+                
+            } catch (error) {
+                log(`❌ Error updating IMU: ${error}`, 'error');
+            }
+        }
+        
+        function handleVideoLoad() {
+            log('📹 Video stream loaded successfully', 'success');
+            document.getElementById('video-state').textContent = 'Active';
+        }
+        
+        function handleVideoError(img) {
+            log('❌ Failed to load video stream', 'error');
+            document.getElementById('video-state').textContent = 'Failed';
+            img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjMzMzIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIFZpZGVvIEZlZWQ8L3RleHQ+PC9zdmc+';
+        }
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && !isConnected) {
+                log('👁️ Page became visible - attempting reconnection...');
+                setTimeout(connectWebSocket, 1000);
+            }
+        });
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', function() {
+            if (ws) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

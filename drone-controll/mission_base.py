@@ -3,10 +3,10 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 from datatypes import MissionResult, MissionStatus
-from drone_controller import ParrotAnafi
 
 if TYPE_CHECKING:
     from drone_controller import ParrotAnafi
+
 
 logger = logging.getLogger(__name__)
 

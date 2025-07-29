@@ -1,9 +1,12 @@
 import asyncio
 import logging
-from typing import List
+from typing import List, TYPE_CHECKING
 from datatypes import MissionResult, MissionStatus, Position
-from drone_controller import ParrotAnafi
 from mission_base import Mission
+
+# Evită importarea circulară
+if TYPE_CHECKING:
+    from drone_controller import ParrotAnafi
 
 logger = logging.getLogger(__name__)
 

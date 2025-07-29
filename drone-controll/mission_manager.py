@@ -1,8 +1,11 @@
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 from mission_base import Mission
 from datatypes import MissionResult
-from drone_controller import ParrotAnafi
+
+# Folosește TYPE_CHECKING pentru a evita importarea circulară
+if TYPE_CHECKING:
+    from drone_controller import ParrotAnafi
 
 logger = logging.getLogger(__name__)
 

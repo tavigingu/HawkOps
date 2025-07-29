@@ -1,0 +1,25 @@
+{
+    "detection": {
+        "min_radius": 15,
+        "max_radius": 250,
+        "min_distance": 40,
+        "param1": 50,
+        "param2": 30,
+        "dp": 1
+    },
+    "preprocessing": {
+        "gaussian_blur": 9,
+        "gaussian_sigma": 2
+    },
+    "display": {
+        "show_center": true,
+        "show_radius": true,
+        "show_bbox": true,
+        "show_stats": true
+    },
+    "camera": {
+        "width": 640,
+        "height": 480,
+        "fps": 30
+    }
+}

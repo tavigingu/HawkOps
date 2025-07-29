@@ -1,0 +1,5 @@
+am acest proiect si as vrea sa inlocuim misiunea cu ring challange cu ceva mai real. Deci as vrea sa amplasez niste inele si drona sa reuseasca sa le detecteze  
+
+sa treaca printr-un tunel asa din mai multe inele cercuri deci prima oara trebuie sa detectez cercurile din imainge dar trebuie sa il vada si sa stie cumva care e cel mai aproape, (toate o sa aiba aceeasi marime deci oare o logica ar fi sa il luam pe cel mai mare ca fiind cel mai apropiat) si apoi cand e centrat pe centrul cercului (ma gandesc sa aliniem cumva centrul camerei cu centrul cerclui) sa mergem inainte prin inel
+
+insa inelele nu vor fi aliniate, vor fi mai jos mai sus stanga sau dreapta asa ca sa le poata detecta si daca nu apar complet in imainge apoi sa se centreze catre ele. Cercul cel mai apropiat ma gandesc sa il detecteze ca fiind cel mai mare iar apoi dupa ce trece prin acesta urmatorul si tot asa 
